@@ -1,0 +1,51 @@
+<%- include('partials/head') %>
+<%- include('partials/header', { navMode: 'auth' }) %>
+
+<section class="card">
+  <!-- padlock + shield, matching the reference sign-in screen -->
+  <svg class="icon-badge" viewBox="0 0 64 64" role="img" aria-label="Secure login">
+    <path d="M32 4 54 12v18c0 14-9.4 24.6-22 30C19.4 54.6 10 44 10 30V12L32 4Z" fill="#7f8c99"/>
+    <path d="M32 9.5 49 16v14c0 11.6-7.6 20.6-17 25.2V9.5Z" fill="#5f9e5f"/>
+    <rect x="20" y="27" width="24" height="19" rx="3.5" fill="#5b6a7a"/>
+    <path d="M25 27v-5a7 7 0 0 1 14 0v5" fill="none" stroke="#5b6a7a" stroke-width="4"/>
+    <circle cx="32" cy="35" r="3" fill="#e8ecf1"/>
+    <rect x="30.6" y="35" width="2.8" height="6" rx="1.4" fill="#e8ecf1"/>
+  </svg>
+
+  <h1>Sign in to GoCart</h1>
+  <p class="step-label">Step 1: Password Authentication</p>
+
+  <% if (notice) { %>
+    <div class="alert alert--<%= notice.type %>" role="status"><%= notice.text %></div>
+  <% } %>
+
+  <div id="formAlert" class="alert alert--error" role="alert" hidden></div>
+
+  <form id="loginForm" novalidate>
+    <div class="field">
+      <label for="email">Email Address</label>
+      <input type="email" id="email" name="email" autocomplete="email" maxlength="254" required autofocus>
+    </div>
+
+    <div class="field">
+      <label for="password">Password</label>
+      <div class="password-wrap">
+        <input type="password" id="password" name="password" autocomplete="current-password" required>
+        <button type="button" class="toggle-eye" id="togglePassword" aria-label="Show password">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M1.8 12S5.4 5 12 5s10.2 7 10.2 7-3.6 7-10.2 7S1.8 12 1.8 12Z"/>
+            <circle cx="12" cy="12" r="3"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <p class="forgot-row"><a href="/login">Forgot Password?</a></p>
+
+    <button type="submit" class="btn" id="submitBtn">Continue with Password</button>
+  </form>
+
+  <p class="link-row">Need to create an account? <a href="/register">Register</a></p>
+</section>
+
+<%- include('partials/footer', { pageScript: 'login' }) %>

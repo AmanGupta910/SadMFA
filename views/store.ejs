@@ -1,0 +1,23 @@
+<%- include('partials/head') %>
+<%- include('partials/header', { navMode: 'dashboard' }) %>
+
+<section class="card card--wide">
+  <h1>GoCart Store</h1>
+  <p class="step-label">Signed in as <%= user.email %></p>
+
+  <p class="lead">
+    This is a dummy storefront that stands in for the real GoCart application.
+    You reached it only because all three authentication factors were completed.
+  </p>
+
+  <div class="store-grid">
+    <div class="store-item"><div class="name">Wireless Mouse</div><div class="price">&#8377; 799</div></div>
+    <div class="store-item"><div class="name">Laptop Stand</div><div class="price">&#8377; 1,249</div></div>
+    <div class="store-item"><div class="name">USB-C Hub</div><div class="price">&#8377; 1,899</div></div>
+    <div class="store-item"><div class="name">Mechanical Keyboard</div><div class="price">&#8377; 3,499</div></div>
+  </div>
+
+  <p class="link-row"><a href="/dashboard">Back to MFA Dashboard</a></p>
+</section>
+
+<%- include('partials/footer', { pageScript: 'dashboard' }) %>

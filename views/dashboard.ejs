@@ -1,0 +1,73 @@
+<%- include('partials/head') %>
+<%- include('partials/header', { navMode: 'dashboard' }) %>
+
+<section class="card card--wide">
+  <svg class="success-mark" viewBox="0 0 100 100" role="img" aria-label="MFA complete">
+    <circle cx="50" cy="50" r="42" fill="none" stroke="#16a34a" stroke-width="7"/>
+    <path d="M30 51 44 65 71 36" fill="none" stroke="#16a34a" stroke-width="9"
+          stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>
+
+  <h1 class="result-title">MFA COMPLETED SUCCESSFULLY</h1>
+  <p class="result-subtitle">Secure Access Granted</p>
+
+  <div class="status-box">
+    <dl>
+      <dt>Registered Email:</dt>
+      <dd><%= user.email %></dd>
+
+      <dt>Password Authentication:</dt>
+      <dd class="status-ok">COMPLETED</dd>
+
+      <dt>OTP Verification:</dt>
+      <dd class="status-ok">COMPLETED</dd>
+
+      <dt>Email Verification:</dt>
+      <dd class="status-ok">COMPLETED</dd>
+
+      <dt>Overall MFA Status:</dt>
+      <dd class="status-strong">SUCCESS</dd>
+    </dl>
+  </div>
+
+  <p class="lead">
+    Welcome to GoCart, <strong><%= user.name %></strong>.<br>
+    All 3 authentication factors have been successfully completed.
+  </p>
+
+  <ul class="factor-list">
+    <li><span class="tick">&#10003;</span>Password Verified <span class="text-small">(knowledge factor)</span></li>
+    <li><span class="tick">&#10003;</span>OTP Verified <span class="text-small">(possession factor)</span></li>
+    <li><span class="tick">&#10003;</span>Email Verified <span class="text-small">(ownership approval)</span></li>
+  </ul>
+
+  <a class="btn" href="/store" style="text-decoration:none;">Go to Store Dashboard</a>
+
+  <p class="link-row">
+    <button type="button" class="link-btn" id="logoutLink">Logout</button>
+  </p>
+
+  <% if (recentEvents && recentEvents.length > 0) { %>
+    <div class="audit">
+      <h2>Recent authentication events</h2>
+      <div class="audit-scroll">
+        <table>
+          <thead>
+            <tr><th>Event</th><th>Detail</th><th>Time (UTC)</th></tr>
+          </thead>
+          <tbody>
+            <% recentEvents.forEach(function (row) { %>
+              <tr>
+                <td><%= row.event %></td>
+                <td><%= row.detail || '-' %></td>
+                <td><%= row.created_at.replace('T', ' ').slice(0, 19) %></td>
+              </tr>
+            <% }); %>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  <% } %>
+</section>
+
+<%- include('partials/footer', { pageScript: 'dashboard' }) %>

@@ -1,0 +1,15 @@
+# dependencies
+node_modules/
+
+# real secrets - never commit (.env.example is the safe template)
+.env
+.env.local
+
+# runtime data: sqlite database + generated demo emails
+data/
+
+# logs / os junk
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db

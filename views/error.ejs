@@ -1,0 +1,10 @@
+<%- include('partials/head') %>
+<%- include('partials/header', { navMode: 'auth' }) %>
+
+<section class="card">
+  <h1><%= heading %></h1>
+  <p class="lead"><%= message %></p>
+  <a class="btn" href="/login" style="text-decoration:none;">Back to Login</a>
+</section>
+
+<%- include('partials/footer', { pageScript: null }) %>

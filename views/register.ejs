@@ -1,0 +1,38 @@
+<%- include('partials/head') %>
+<%- include('partials/header', { navMode: 'auth' }) %>
+
+<section class="card">
+  <h1>GoCart Registration Page</h1>
+  <p class="step-label">Step 1 of 3: Initial Registration</p>
+
+  <div id="formAlert" class="alert alert--error" role="alert" hidden></div>
+
+  <form id="registerForm" novalidate>
+    <div class="field">
+      <label for="name">Full Name</label>
+      <input type="text" id="name" name="name" autocomplete="name" maxlength="60" required>
+    </div>
+
+    <div class="field">
+      <label for="email">Email Address</label>
+      <input type="email" id="email" name="email" autocomplete="email" maxlength="254" required>
+    </div>
+
+    <div class="field">
+      <label for="password">Password</label>
+      <input type="password" id="password" name="password" autocomplete="new-password" required>
+      <span class="hint">Min 8 characters, 1 uppercase, 1 number, 1 symbol</span>
+    </div>
+
+    <div class="field">
+      <label for="confirmPassword">Confirm Password</label>
+      <input type="password" id="confirmPassword" name="confirmPassword" autocomplete="new-password" required>
+    </div>
+
+    <button type="submit" class="btn btn--spaced" id="submitBtn">Register &amp; Begin MFA Setup</button>
+  </form>
+
+  <p class="link-row">Already have an account? <a href="/login">Go to Login</a></p>
+</section>
+
+<%- include('partials/footer', { pageScript: 'register' }) %>

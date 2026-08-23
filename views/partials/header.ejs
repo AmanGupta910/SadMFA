@@ -1,0 +1,18 @@
+<header class="site-header">
+  <a class="brand" href="/">GoCart</a>
+
+  <nav>
+    <% if (typeof navMode !== 'undefined' && navMode === 'dashboard') { %>
+      <a href="/dashboard">Dashboard</a>
+      <a href="/store">My Orders</a>
+      <a href="/store">Account Settings</a>
+      <button type="button" id="logoutBtn" class="header-pill">Logout</button>
+    <% } else if (typeof navMode !== 'undefined' && navMode === 'none') { %>
+      <span class="sr-only">GoCart Security</span>
+    <% } else { %>
+      <a class="header-pill" href="/login">Login / Register</a>
+    <% } %>
+  </nav>
+</header>
+
+<main class="page">

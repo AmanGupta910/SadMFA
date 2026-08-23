@@ -1,0 +1,37 @@
+<%- include('partials/head') %>
+<%- include('partials/header', { navMode: 'none' }) %>
+
+<section class="card card--wide"
+         data-ttl-minutes="<%= tokenTtlMinutes %>"
+         data-resend-cooldown="<%= resendCooldown %>"
+         data-already-sent="<%= alreadySent ? '1' : '0' %>">
+
+  <h1>Email Verification Pending</h1>
+  <p class="step-label">Step 3 of 3: Email Verification</p>
+
+  <div class="spinner" role="status" aria-label="Waiting for email confirmation"></div>
+
+  <p class="lead">
+    We&rsquo;ve sent a verification link to your registered email:
+    <strong><%= email %></strong>.
+  </p>
+  <p class="lead">
+    Please check your inbox and click the <strong>&lsquo;Yes, It&rsquo;s Me&rsquo;</strong> button to continue.
+    This link will <strong>expire in <%= tokenTtlMinutes %> minutes</strong>.
+  </p>
+
+  <div id="demoPanel" class="demo-panel" hidden>
+    <span class="demo-title">Demo mode - not shown in production</span>
+    No inbox handy? Open the verification link directly:<br>
+    <a id="demoLink" href="#" target="_blank" rel="noopener">Click here - &ldquo;YES, IT&rsquo;S ME&rdquo;</a>
+  </div>
+
+  <div id="formAlert" class="alert alert--error" role="alert" hidden></div>
+  <div id="infoAlert" class="alert alert--success" role="status" hidden></div>
+
+  <button type="button" class="btn" id="resendBtn" disabled>Resend Verification Email</button>
+
+  <p class="link-row text-small" id="statusLine">Waiting for you to confirm the login from your email&hellip;</p>
+</section>
+
+<%- include('partials/footer', { pageScript: 'verify-email' }) %>

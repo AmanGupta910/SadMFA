@@ -1,0 +1,30 @@
+{
+  "name": "gocart-mfa",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Implementation of Multi-Factor Authentication (MFA) using minimum three authentication steps - GoCart college mini project",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning server.js",
+    "dev": "node --disable-warning=ExperimentalWarning --watch server.js",
+    "init-db": "node --disable-warning=ExperimentalWarning src/db/init.js",
+    "reset-db": "node --disable-warning=ExperimentalWarning src/db/init.js --reset",
+    "test": "node --disable-warning=ExperimentalWarning tests/mfa-flow.test.js",
+    "setup-email": "node --disable-warning=ExperimentalWarning scripts/setup-email.js",
+    "test-email": "node --disable-warning=ExperimentalWarning scripts/test-email.js",
+    "start:offline": "node --disable-warning=ExperimentalWarning scripts/start-offline.js",
+    "check-email": "node --disable-warning=ExperimentalWarning scripts/check-email.js"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.2",
+    "dotenv": "^17.2.1",
+    "ejs": "^3.1.10",
+    "express": "^5.1.0",
+    "express-session": "^1.18.1",
+    "nodemailer": "^9.0.5"
+  }
+}

@@ -1,0 +1,28 @@
+<%- include('partials/head') %>
+<%- include('partials/header', { navMode: 'none' }) %>
+
+<section class="card card--wide">
+  <svg class="success-mark" viewBox="0 0 100 100" role="img" aria-label="Success">
+    <circle cx="50" cy="50" r="42" fill="none" stroke="#16a34a" stroke-width="7"/>
+    <path d="M30 51 44 65 71 36" fill="none" stroke="#16a34a" stroke-width="9"
+          stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>
+
+  <h1>Email Verified Successfully</h1>
+
+  <p class="lead">Your email address has been verified.</p>
+  <p class="lead">
+    You have completed all three authentication steps.<br>
+    <% if (sameBrowser) { %>
+      You are now being redirected to your Store Dashboard.
+    <% } else { %>
+      You can now return to the tab where you started signing in - it will continue automatically.
+    <% } %>
+  </p>
+
+  <% if (sameBrowser) { %>
+    <a class="btn" href="/dashboard" style="text-decoration:none;">Go to Store Dashboard</a>
+  <% } %>
+</section>
+
+<%- include('partials/footer', { pageScript: sameBrowser ? 'verify-email-success' : null }) %>

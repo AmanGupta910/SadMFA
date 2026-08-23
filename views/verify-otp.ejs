@@ -1,0 +1,57 @@
+<%- include('partials/head') %>
+<%- include('partials/header', { navMode: 'none' }) %>
+
+<section class="card"
+         data-otp-length="<%= otpLength %>"
+         data-seconds-left="<%= secondsLeft %>"
+         data-resend-cooldown="<%= resendCooldown %>">
+
+  <h1>Enter One-Time Password (OTP)</h1>
+  <p class="step-label">Step 2 of 3: Possession Verification</p>
+
+  <!-- key icon, matching the reference OTP screen -->
+  <svg class="icon-badge icon-badge--sm" viewBox="0 0 48 24" role="img" aria-label="One-time password">
+    <circle cx="10" cy="12" r="7.5" fill="none" stroke="#2b3440" stroke-width="3.5"/>
+    <circle cx="10" cy="12" r="2.4" fill="#2b3440"/>
+    <path d="M17 12h24" stroke="#2b3440" stroke-width="3.5" stroke-linecap="round"/>
+    <path d="M33 12v6" stroke="#2b3440" stroke-width="3.5" stroke-linecap="round"/>
+    <path d="M40 12v6" stroke="#2b3440" stroke-width="3.5" stroke-linecap="round"/>
+  </svg>
+
+  <p class="lead">
+    A <%= otpLength %>-digit code has been sent to your registered email:
+    <strong><%= maskedEmail %></strong>. Please enter it below.
+  </p>
+
+  <div id="demoPanel" class="demo-panel" hidden>
+    <span class="demo-title">Demo mode - not shown in production</span>
+    Current OTP: <code id="demoOtp"></code>
+  </div>
+
+  <div id="formAlert" class="alert alert--error" role="alert" hidden></div>
+
+  <form id="otpForm" novalidate>
+    <div class="otp-inputs" id="otpInputs">
+      <% for (let i = 0; i < otpLength; i++) { %>
+        <%# No maxlength: the script spreads a multi-digit value (fast typing,
+            paste, or phone SMS-autofill) across the remaining boxes instead of
+            letting the browser silently truncate it. %>
+        <input type="text"
+               inputmode="numeric"
+               autocomplete="<%= i === 0 ? 'one-time-code' : 'off' %>"
+               aria-label="Digit <%= i + 1 %>"
+               <%= i === 0 ? 'autofocus' : '' %>>
+      <% } %>
+    </div>
+
+    <p class="countdown" id="countdown" aria-live="polite"></p>
+
+    <button type="submit" class="btn" id="verifyBtn">Verify OTP</button>
+  </form>
+
+  <p class="link-row">
+    <button type="button" class="link-btn" id="resendBtn">Resend Code</button>
+  </p>
+</section>
+
+<%- include('partials/footer', { pageScript: 'verify-otp' }) %>

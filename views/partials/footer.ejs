@@ -1,0 +1,14 @@
+</main>
+
+<footer class="site-footer">
+  <a href="/login">Privacy Policy</a>
+  <a href="/login">Terms of Service</a>
+  <span>&copy; <%= year %> GoCart Technologies</span>
+</footer>
+
+<% if (typeof pageScript !== 'undefined' && pageScript) { %>
+  <script src="/js/common.js?v=<%= assetVersion %>"></script>
+  <script src="/js/<%= pageScript %>.js?v=<%= assetVersion %>"></script>
+<% } %>
+</body>
+</html>

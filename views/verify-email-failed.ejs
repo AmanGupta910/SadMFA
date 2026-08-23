@@ -1,0 +1,22 @@
+<%- include('partials/head') %>
+<%- include('partials/header', { navMode: 'none' }) %>
+
+<section class="card card--wide">
+  <svg class="success-mark" viewBox="0 0 100 100" role="img" aria-label="Rejected"
+       style="filter: drop-shadow(0 0 12px rgba(220,38,38,0.35));">
+    <circle cx="50" cy="50" r="42" fill="none" stroke="#dc2626" stroke-width="7"/>
+    <path d="M35 35 65 65 M65 35 35 65" fill="none" stroke="#dc2626" stroke-width="9" stroke-linecap="round"/>
+  </svg>
+
+  <h1><%= heading %></h1>
+
+  <p class="lead"><%= message %></p>
+
+  <div class="alert alert--warning" role="alert">
+    <strong>Reason code:</strong> <%= reasonCode %>
+  </div>
+
+  <a class="btn" href="/login" style="text-decoration:none;">Back to Login</a>
+</section>
+
+<%- include('partials/footer', { pageScript: null }) %>
