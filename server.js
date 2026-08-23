@@ -14,7 +14,8 @@ const express = require('express');
 const session = require('express-session');
 
 const { config, validateConfig } = require('./src/config/env');
-const { migrate } = require('./src/db');
+const { db, migrate, DB_FILE } = require('./src/db');
+const { SqliteSessionStore } = require('./src/db/sessionStore');
 const mfaSessionRepo = require('./src/models/mfaSessionRepo');
 const rateLimit = require('./src/lib/rateLimit');
 const { verifyTransport } = require('./src/lib/mailer');
@@ -63,6 +64,9 @@ app.use(
   session({
     name: 'gocart.sid', // do not reveal the framework via the default name
     secret: config.sessionSecret, // from .env, never hard-coded
+    // Sessions live in SQLite, not in memory, so a restart or redeploy does not
+    // log everybody out mid-MFA.
+    store: new SqliteSessionStore(db, { ttlMs: config.mfaSessionTtlMinutes * 60 * 1000 }),
     resave: false,
     saveUninitialized: false, // no cookie until there is something to remember
     rolling: true, // sliding expiry while the user is active
@@ -89,6 +93,19 @@ app.use((req, res, next) => {
   res.locals.assetVersion = ASSET_VERSION;
   res.locals.isAuthenticated = Boolean(req.session && req.session.userId && req.session.mfaCompleted);
   next();
+});
+
+// --------------------------------------------------------------------------
+// Health check - hosting platforms poll this to decide if the app is alive.
+// Deliberately reveals nothing about configuration or secrets.
+// --------------------------------------------------------------------------
+app.get('/healthz', (req, res) => {
+  try {
+    db.prepare('SELECT 1').get(); // prove the database is reachable too
+    return res.json({ status: 'ok', uptime: Math.round(process.uptime()) });
+  } catch (error) {
+    return res.status(503).json({ status: 'unhealthy' });
+  }
 });
 
 // --------------------------------------------------------------------------

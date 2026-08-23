@@ -1,0 +1,68 @@
+# Render deployment blueprint.
+#
+# Render reads this file when you create a "Blueprint" from the repository, so
+# the service, disk and environment variables are set up for you.
+#
+# The secret values (SESSION_SECRET, HASH_PEPPER, EMAIL_USER, EMAIL_PASSWORD)
+# are deliberately NOT in this file. `sync: false` tells Render to ask for them
+# in the dashboard instead, so no credential is ever committed to git.
+
+services:
+  - type: web
+    name: gocart-mfa
+    runtime: node
+    plan: starter # "free" also works, but has no persistent disk (see below)
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /healthz
+
+    # Persistent storage for the SQLite database. Without a disk the container
+    # filesystem is wiped on every deploy and restart, taking all accounts with
+    # it. The free plan does not support disks - remove this block if you use
+    # it, and accept that registrations disappear when the service restarts.
+    disk:
+      name: gocart-data
+      mountPath: /var/data
+      sizeGB: 1
+
+    envVars:
+      - key: NODE_VERSION
+        value: 22.16.0
+
+      - key: NODE_ENV
+        value: production
+
+      # Where the SQLite file is written - must match the disk mountPath above.
+      - key: DATA_DIR
+        value: /var/data
+
+      # Must be the real public URL, because the "YES, IT'S ME" link is built
+      # from it. Render fills this in automatically from the service address.
+      - key: APP_BASE_URL
+        fromService:
+          type: web
+          name: gocart-mfa
+          envVarKey: RENDER_EXTERNAL_URL
+
+      # Generated once by Render and then kept stable.
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: HASH_PEPPER
+        generateValue: true
+
+      - key: MAIL_TRANSPORT
+        value: smtp
+      - key: EMAIL_HOST
+        value: smtp.gmail.com
+      - key: EMAIL_PORT
+        value: "587"
+      - key: EMAIL_SECURE
+        value: "false"
+
+      # Entered by hand in the Render dashboard - never stored in the repo.
+      - key: EMAIL_USER
+        sync: false
+      - key: EMAIL_PASSWORD
+        sync: false
+      - key: EMAIL_FROM
+        sync: false

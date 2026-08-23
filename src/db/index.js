@@ -12,7 +12,18 @@ const path = require('node:path');
 const fs = require('node:fs');
 const { DatabaseSync } = require('node:sqlite');
 
-const DATA_DIR = path.join(__dirname, '..', '..', 'data');
+/**
+ * Where the database file lives.
+ *
+ * Defaults to ./data next to the source, which is what you want locally. In a
+ * deployment set DATA_DIR to a mounted persistent disk (for example
+ * /var/data on Render), otherwise the file sits on the container's temporary
+ * filesystem and every account disappears on the next restart.
+ */
+const DATA_DIR = process.env.DATA_DIR
+  ? path.resolve(process.env.DATA_DIR)
+  : path.join(__dirname, '..', '..', 'data');
+
 const DB_FILE = path.join(DATA_DIR, 'gocart-mfa.db');
 const SCHEMA_FILE = path.join(__dirname, 'schema.sql');
 

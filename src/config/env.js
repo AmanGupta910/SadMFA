@@ -86,6 +86,26 @@ function validateConfig() {
   if (!config.hashPepper || config.hashPepper.length < 16) {
     problems.push('HASH_PEPPER is missing or too short (need >= 16 characters).');
   }
+  if (isProduction) {
+    // The "YES, IT'S ME" link is built from APP_BASE_URL. If that still points
+    // at localhost, every verification email ships a link nobody can open, and
+    // the failure only shows up in the user's inbox - so refuse to start.
+    if (/localhost|127\.0\.0\.1/i.test(config.baseUrl)) {
+      problems.push(
+        `APP_BASE_URL is "${config.baseUrl}" but NODE_ENV=production.\n` +
+          '     Set it to the public address of the site, e.g. https://your-app.onrender.com'
+      );
+    }
+    // Session cookies are marked "secure" in production, so the browser will
+    // refuse to send them over plain HTTP and nobody could stay logged in.
+    if (!config.baseUrl.startsWith('https://')) {
+      problems.push(`APP_BASE_URL must start with https:// in production (got "${config.baseUrl}").`);
+    }
+    if (config.mailTransport !== 'smtp') {
+      problems.push('MAIL_TRANSPORT must be "smtp" in production so real emails are actually sent.');
+    }
+  }
+
   if (config.mailTransport === 'smtp') {
     if (!config.email.host) problems.push('MAIL_TRANSPORT=smtp but EMAIL_HOST is not set.');
     if (!config.email.user) problems.push('MAIL_TRANSPORT=smtp but EMAIL_USER is not set.');
