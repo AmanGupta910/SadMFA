@@ -20,13 +20,17 @@ function noCache(req, res, next) {
   next();
 }
 
+/** Wraps an async middleware so a rejected promise reaches the error handler. */
+const wrap = (handler) => (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
+
 /** Loads the in-progress ceremony (if any) and attaches it to the request. */
-function loadMfaSession(req, res, next) {
+const loadMfaSession = wrap(async (req, res, next) => {
   req.mfaSession = null;
+
   const sessionId = req.session ? req.session.mfaSessionId : null;
   if (!sessionId) return next();
 
-  const record = mfaSessionRepo.findById(sessionId);
+  const record = await mfaSessionRepo.findById(sessionId);
   if (!record) {
     delete req.session.mfaSessionId;
     return next();
@@ -39,8 +43,8 @@ function loadMfaSession(req, res, next) {
   }
 
   req.mfaSession = record;
-  next();
-}
+  return next();
+});
 
 const wantsJson = (req) =>
   req.xhr || (req.get('accept') || '').includes('application/json') || req.path.startsWith('/api/');
@@ -57,7 +61,7 @@ function deny(req, res, { status, code, message, redirect }) {
  * @param {'password'|'otp'} stage
  */
 function requireMfaStage(stage) {
-  return (req, res, next) => {
+  return wrap(async (req, res, next) => {
     const session = req.mfaSession;
 
     if (!session) {
@@ -96,7 +100,7 @@ function requireMfaStage(stage) {
       });
     }
 
-    req.mfaUser = userRepo.findById(session.user_id);
+    req.mfaUser = await userRepo.findById(session.user_id);
     if (!req.mfaUser) {
       return deny(req, res, {
         status: 401,
@@ -106,12 +110,12 @@ function requireMfaStage(stage) {
       });
     }
 
-    next();
-  };
+    return next();
+  });
 }
 
 /** Guards the dashboard: only a fully completed MFA ceremony gets through. */
-function requireAuth(req, res, next) {
+const requireAuth = wrap(async (req, res, next) => {
   const isAuthenticated = Boolean(req.session && req.session.userId && req.session.mfaCompleted);
 
   if (!isAuthenticated) {
@@ -123,21 +127,21 @@ function requireAuth(req, res, next) {
     });
   }
 
-  const user = userRepo.findById(req.session.userId);
+  const user = await userRepo.findById(req.session.userId);
   if (!user) {
     return req.session.destroy(() => res.redirect('/login?reason=unauthorized'));
   }
 
   req.user = user;
-  next();
-}
+  return next();
+});
 
 /** Sends an already-authenticated visitor straight to the dashboard. */
 function redirectIfAuthenticated(req, res, next) {
   if (req.session && req.session.userId && req.session.mfaCompleted) {
     return res.redirect('/dashboard');
   }
-  next();
+  return next();
 }
 
 module.exports = { noCache, loadMfaSession, requireMfaStage, requireAuth, redirectIfAuthenticated };

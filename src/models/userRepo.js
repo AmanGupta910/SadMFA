@@ -3,43 +3,45 @@
 /**
  * Data access for the `users` table.
  *
- * Every query uses prepared statements with bound parameters, so user input can
- * never be concatenated into SQL (SQL-injection protection).
+ * Every query uses bound parameters, so user input can never be concatenated
+ * into SQL (SQL-injection protection). Queries are written with `?` and the
+ * database layer rewrites them for Postgres when deployed.
  */
 
-const { db, now } = require('../db');
+const db = require('../db');
 
 /** Emails are compared case-insensitively, so they are stored normalised. */
 const normaliseEmail = (email) => String(email || '').trim().toLowerCase();
 
-function findByEmail(email) {
-  return db.prepare('SELECT * FROM users WHERE email = ?').get(normaliseEmail(email));
+async function findByEmail(email) {
+  return db.get('SELECT * FROM users WHERE email = ?', [normaliseEmail(email)]);
 }
 
-function findById(id) {
-  return db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+async function findById(id) {
+  return db.get('SELECT * FROM users WHERE id = ?', [id]);
 }
 
-function emailExists(email) {
-  const row = db.prepare('SELECT 1 AS hit FROM users WHERE email = ?').get(normaliseEmail(email));
+async function emailExists(email) {
+  const row = await db.get('SELECT 1 AS hit FROM users WHERE email = ?', [normaliseEmail(email)]);
   return Boolean(row);
 }
 
 /** Inserts a new account. `passwordHash` must already be a bcrypt hash. */
-function createUser({ name, email, passwordHash }) {
-  const timestamp = now();
-  const result = db
-    .prepare(
-      `INSERT INTO users (name, email, password_hash, email_verified, created_at, updated_at)
-       VALUES (?, ?, ?, 0, ?, ?)`
-    )
-    .run(String(name).trim(), normaliseEmail(email), passwordHash, timestamp, timestamp);
+async function createUser({ name, email, passwordHash }) {
+  const timestamp = db.now();
 
-  return findById(Number(result.lastInsertRowid));
+  // RETURNING is supported by both SQLite (3.35+) and Postgres, so one query
+  // works on either engine and no follow-up SELECT is needed.
+  return db.get(
+    `INSERT INTO users (name, email, password_hash, email_verified, created_at, updated_at)
+     VALUES (?, ?, ?, 0, ?, ?)
+     RETURNING *`,
+    [String(name).trim(), normaliseEmail(email), passwordHash, timestamp, timestamp]
+  );
 }
 
-function markEmailVerified(userId) {
-  db.prepare('UPDATE users SET email_verified = 1, updated_at = ? WHERE id = ?').run(now(), userId);
+async function markEmailVerified(userId) {
+  await db.run('UPDATE users SET email_verified = 1, updated_at = ? WHERE id = ?', [db.now(), userId]);
 }
 
 /**

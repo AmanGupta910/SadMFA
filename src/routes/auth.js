@@ -61,7 +61,7 @@ router.post(
     }
 
     // 2. Reject a duplicate email.
-    if (userRepo.emailExists(check.value.email)) {
+    if (await userRepo.emailExists(check.value.email)) {
       return fail(res, 409, 'EMAIL_EXISTS', 'An account with this email address already exists. Please log in instead.', {
         field: 'email',
       });
@@ -80,13 +80,13 @@ router.post(
     const passwordHash = await hashPassword(check.value.password);
 
     // 4. / 5. Create the account with its MFA fields initialised.
-    const user = userRepo.createUser({
+    const user = await userRepo.createUser({
       name: check.value.name,
       email: check.value.email,
       passwordHash,
     });
 
-    audit.record({ userId: user.id, event: 'USER_REGISTERED', ipAddress: clientIp(req) });
+    await audit.record({ userId: user.id, event: 'USER_REGISTERED', ipAddress: clientIp(req) });
 
     // 6. The browser is told to go to the login page. No session is created here:
     //    registering does not log you in, you must still pass all three factors.
@@ -118,7 +118,7 @@ router.post(
       windowMs: config.loginWindowMinutes * 60000,
     });
     if (!limit.allowed) {
-      audit.record({ event: 'LOGIN_RATE_LIMITED', detail: emailCheck.value, ipAddress: clientIp(req) });
+      await audit.record({ event: 'LOGIN_RATE_LIMITED', detail: emailCheck.value, ipAddress: clientIp(req) });
       return fail(
         res,
         429,
@@ -127,7 +127,7 @@ router.post(
       );
     }
 
-    const user = userRepo.findByEmail(emailCheck.value);
+    const user = await userRepo.findByEmail(emailCheck.value);
 
     // Same generic message and similar timing whether the email exists or not,
     // so the endpoint cannot be used to discover which emails are registered.
@@ -138,7 +138,7 @@ router.post(
 
     const passwordOk = await verifyPassword(password, user.password_hash);
     if (!passwordOk) {
-      audit.record({ userId: user.id, event: 'LOGIN_PASSWORD_FAILED', ipAddress: clientIp(req) });
+      await audit.record({ userId: user.id, event: 'LOGIN_PASSWORD_FAILED', ipAddress: clientIp(req) });
       return fail(res, 401, 'INVALID_CREDENTIALS', 'Invalid email or password.');
     }
 
@@ -146,24 +146,24 @@ router.post(
 
     // Password accepted -> open a TEMPORARY ceremony. This is not a login session:
     // it carries no userId, so it unlocks nothing except the next MFA step.
-    const mfaSession = mfaSessionRepo.createSession({
+    const mfaSession = await mfaSessionRepo.createSession({
       userId: user.id,
       ipAddress: clientIp(req),
       userAgent: req.get('user-agent'),
     });
-    mfaSessionRepo.expireOtherPendingSessions(user.id, mfaSession.id);
+    await mfaSessionRepo.expireOtherPendingSessions(user.id, mfaSession.id);
 
     // Generate and email the first OTP (STEP 2).
     const otp = generateOtp();
     const otpHash = await hashOtp(otp);
-    mfaSessionRepo.setOtp(mfaSession.id, { otpHash, resendCount: 0 });
+    await mfaSessionRepo.setOtp(mfaSession.id, { otpHash, resendCount: 0 });
 
     const mail = await sendMail({
       to: user.email,
       ...emailTemplates.otpEmail({ name: user.name, otp }),
     });
 
-    audit.record({
+    await audit.record({
       userId: user.id,
       mfaSessionId: mfaSession.id,
       event: 'LOGIN_PASSWORD_OK',
@@ -175,7 +175,7 @@ router.post(
     // the OTP screen - they would be stuck waiting for an email that never
     // arrives. Abandon this attempt and say so plainly.
     if (!mail.ok) {
-      mfaSessionRepo.lockSession(mfaSession.id, 'locked');
+      await mfaSessionRepo.lockSession(mfaSession.id, 'locked');
       return fail(
         res,
         502,
@@ -230,8 +230,8 @@ router.post(
 
     // Attempt limit - stops an attacker simply trying all million combinations.
     if (session.otp_attempts >= config.otpMaxAttempts) {
-      mfaSessionRepo.lockSession(session.id, 'locked');
-      audit.record({ userId: user.id, mfaSessionId: session.id, event: 'OTP_LOCKED', ipAddress: clientIp(req) });
+      await mfaSessionRepo.lockSession(session.id, 'locked');
+      await audit.record({ userId: user.id, mfaSessionId: session.id, event: 'OTP_LOCKED', ipAddress: clientIp(req) });
       return fail(res, 429, 'TOO_MANY_OTP_ATTEMPTS', 'Too many incorrect attempts. Please sign in again.', {
         redirect: '/login?reason=otp_locked',
       });
@@ -246,10 +246,10 @@ router.post(
     const matches = await verifyOtp(submitted, session.otp_hash);
 
     if (!matches) {
-      const updated = mfaSessionRepo.incrementOtpAttempts(session.id);
+      const updated = await mfaSessionRepo.incrementOtpAttempts(session.id);
       const attemptsRemaining = Math.max(0, config.otpMaxAttempts - updated.otp_attempts);
 
-      audit.record({
+      await audit.record({
         userId: user.id,
         mfaSessionId: session.id,
         event: 'OTP_FAILED',
@@ -258,7 +258,7 @@ router.post(
       });
 
       if (attemptsRemaining === 0) {
-        mfaSessionRepo.lockSession(session.id, 'locked');
+        await mfaSessionRepo.lockSession(session.id, 'locked');
         return fail(res, 429, 'TOO_MANY_OTP_ATTEMPTS', 'Too many incorrect attempts. Please sign in again.', {
           attemptsRemaining: 0,
           redirect: '/login?reason=otp_locked',
@@ -272,8 +272,8 @@ router.post(
     }
 
     // Correct -> burn the OTP so the same code can never be replayed.
-    mfaSessionRepo.markOtpVerified(session.id);
-    audit.record({ userId: user.id, mfaSessionId: session.id, event: 'OTP_VERIFIED', ipAddress: clientIp(req) });
+    await mfaSessionRepo.markOtpVerified(session.id);
+    await audit.record({ userId: user.id, mfaSessionId: session.id, event: 'OTP_VERIFIED', ipAddress: clientIp(req) });
 
     return res.json({
       success: true,
@@ -318,16 +318,16 @@ router.post(
     // A brand new code replaces the old hash, so the previous OTP stops working.
     const otp = generateOtp();
     const otpHash = await hashOtp(otp);
-    mfaSessionRepo.setOtp(session.id, { otpHash, resendCount: session.otp_resend_count + 1 });
+    await mfaSessionRepo.setOtp(session.id, { otpHash, resendCount: session.otp_resend_count + 1 });
 
     const mail = await sendMail({ to: user.email, ...emailTemplates.otpEmail({ name: user.name, otp }) });
 
     if (!mail.ok) {
-      audit.record({ userId: user.id, mfaSessionId: session.id, event: 'OTP_RESEND_FAILED', ipAddress: clientIp(req) });
+      await audit.record({ userId: user.id, mfaSessionId: session.id, event: 'OTP_RESEND_FAILED', ipAddress: clientIp(req) });
       return fail(res, 502, 'EMAIL_SEND_FAILED', 'We could not send the email right now. Please try again in a moment.');
     }
 
-    audit.record({ userId: user.id, mfaSessionId: session.id, event: 'OTP_RESENT', ipAddress: clientIp(req) });
+    await audit.record({ userId: user.id, mfaSessionId: session.id, event: 'OTP_RESENT', ipAddress: clientIp(req) });
 
     return res.json({
       success: true,
@@ -345,7 +345,7 @@ router.post(
 async function issueVerificationEmail(session, user) {
   const token = generateEmailToken(); // 256-bit random value
   const tokenHash = hashEmailToken(token); // only the hash is stored
-  mfaSessionRepo.setEmailToken(session.id, { tokenHash, resendCount: session.email_resend_count + 1 });
+  await mfaSessionRepo.setEmailToken(session.id, { tokenHash, resendCount: session.email_resend_count + 1 });
 
   const verifyUrl = `${config.baseUrl}/api/auth/verify-email?token=${token}`;
 
@@ -394,11 +394,11 @@ router.post(
     const { mail, verifyUrl } = await issueVerificationEmail(session, user);
 
     if (!mail.ok) {
-      audit.record({ userId: user.id, mfaSessionId: session.id, event: 'EMAIL_VERIFY_SEND_FAILED' });
+      await audit.record({ userId: user.id, mfaSessionId: session.id, event: 'EMAIL_VERIFY_SEND_FAILED' });
       return fail(res, 502, 'EMAIL_SEND_FAILED', 'We could not send the verification email. Please try again in a moment.');
     }
 
-    audit.record({
+    await audit.record({
       userId: user.id,
       mfaSessionId: session.id,
       event: isResend ? 'EMAIL_VERIFY_RESENT' : 'EMAIL_VERIFY_SENT',
@@ -443,7 +443,7 @@ router.get(
     }
 
     // Look the ceremony up by the HASH - the raw token is never stored.
-    const session = mfaSessionRepo.findByEmailTokenHash(hashEmailToken(token));
+    const session = await mfaSessionRepo.findByEmailTokenHash(hashEmailToken(token));
 
     if (!session) {
       // Covers: never existed, already used (hash cleared), or superseded.
@@ -483,16 +483,16 @@ router.get(
       );
     }
 
-    const user = userRepo.findById(session.user_id);
+    const user = await userRepo.findById(session.user_id);
     if (!user) {
       return rejectWith('ACCOUNT_NOT_FOUND', 'Account Not Found', 'We could not find the account for this link.');
     }
 
     // Valid -> burn the token, mark the ceremony complete.
-    mfaSessionRepo.markEmailVerifiedAndComplete(session.id);
-    userRepo.markEmailVerified(user.id);
-    audit.record({ userId: user.id, mfaSessionId: session.id, event: 'EMAIL_VERIFIED', ipAddress: clientIp(req) });
-    audit.record({ userId: user.id, mfaSessionId: session.id, event: 'MFA_COMPLETED', ipAddress: clientIp(req) });
+    await mfaSessionRepo.markEmailVerifiedAndComplete(session.id);
+    await userRepo.markEmailVerified(user.id);
+    await audit.record({ userId: user.id, mfaSessionId: session.id, event: 'EMAIL_VERIFIED', ipAddress: clientIp(req) });
+    await audit.record({ userId: user.id, mfaSessionId: session.id, event: 'MFA_COMPLETED', ipAddress: clientIp(req) });
 
     // If the link was opened in the SAME browser that started the login, upgrade
     // this cookie into a real authenticated session right away.
@@ -541,7 +541,7 @@ router.post(
   '/logout',
   wrap(async (req, res) => {
     const userId = req.session ? req.session.userId : null;
-    if (userId) audit.record({ userId, event: 'LOGOUT', ipAddress: clientIp(req) });
+    if (userId) await audit.record({ userId, event: 'LOGOUT', ipAddress: clientIp(req) });
 
     return req.session.destroy((error) => {
       if (error) return fail(res, 500, 'SERVER_ERROR', 'Could not log out. Please try again.');

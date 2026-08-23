@@ -2,19 +2,21 @@
 
 /** Append-only audit log. Useful as evidence when demonstrating the project. */
 
-const { db, now } = require('../db');
+const db = require('../db');
 
-function record({ userId = null, mfaSessionId = null, event, detail = null, ipAddress = null }) {
-  db.prepare(
+async function record({ userId = null, mfaSessionId = null, event, detail = null, ipAddress = null }) {
+  await db.run(
     `INSERT INTO auth_events (user_id, mfa_session_id, event, detail, ip_address, created_at)
-     VALUES (?, ?, ?, ?, ?, ?)`
-  ).run(userId, mfaSessionId, event, detail, ipAddress, now());
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [userId, mfaSessionId, event, detail, ipAddress, db.now()]
+  );
 }
 
-function recentForUser(userId, limit = 10) {
-  return db
-    .prepare('SELECT event, detail, created_at FROM auth_events WHERE user_id = ? ORDER BY id DESC LIMIT ?')
-    .all(userId, limit);
+async function recentForUser(userId, limit = 10) {
+  return db.all(
+    'SELECT event, detail, created_at FROM auth_events WHERE user_id = ? ORDER BY id DESC LIMIT ?',
+    [userId, limit]
+  );
 }
 
 module.exports = { record, recentForUser };

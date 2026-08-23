@@ -9,37 +9,45 @@
  */
 
 const crypto = require('node:crypto');
-const { db, now } = require('../db');
+const db = require('../db');
 const { config } = require('../config/env');
 
-const minutesFromNow = (minutes) => new Date(Date.now() + minutes * 60_000).toISOString();
+const minutesFromNow = (minutes) => new Date(Date.now() + minutes * 60000).toISOString();
 const isExpired = (isoTimestamp) => !isoTimestamp || new Date(isoTimestamp).getTime() <= Date.now();
 
 /** 256-bit random identifier - unguessable, unlike an auto-increment integer. */
 const newSessionId = () => crypto.randomBytes(32).toString('hex');
 
 /** Opens a fresh ceremony after a correct password. */
-function createSession({ userId, ipAddress, userAgent }) {
+async function createSession({ userId, ipAddress, userAgent }) {
   const id = newSessionId();
-  const timestamp = now();
+  const timestamp = db.now();
 
-  db.prepare(
+  return db.get(
     `INSERT INTO mfa_sessions
        (id, user_id, password_verified, status, ip_address, user_agent, created_at, updated_at, expires_at)
-     VALUES (?, ?, 1, 'pending', ?, ?, ?, ?, ?)`
-  ).run(id, userId, ipAddress || null, userAgent || null, timestamp, timestamp, minutesFromNow(config.mfaSessionTtlMinutes));
-
-  return findById(id);
+     VALUES (?, ?, 1, 'pending', ?, ?, ?, ?, ?)
+     RETURNING *`,
+    [
+      id,
+      userId,
+      ipAddress || null,
+      userAgent || null,
+      timestamp,
+      timestamp,
+      minutesFromNow(config.mfaSessionTtlMinutes),
+    ]
+  );
 }
 
-function findById(id) {
+async function findById(id) {
   if (!id) return null;
-  return db.prepare('SELECT * FROM mfa_sessions WHERE id = ?').get(id) || null;
+  return db.get('SELECT * FROM mfa_sessions WHERE id = ?', [id]);
 }
 
 /** Looks a ceremony up by the hash of the emailed token (STEP 3). */
-function findByEmailTokenHash(tokenHash) {
-  return db.prepare('SELECT * FROM mfa_sessions WHERE email_token_hash = ?').get(tokenHash) || null;
+async function findByEmailTokenHash(tokenHash) {
+  return db.get('SELECT * FROM mfa_sessions WHERE email_token_hash = ?', [tokenHash]);
 }
 
 /** Generic guarded update - only known columns can ever be written. */
@@ -49,54 +57,58 @@ const UPDATABLE = new Set([
   'mfa_completed', 'status',
 ]);
 
-function update(id, fields) {
+async function update(id, fields) {
   const columns = Object.keys(fields).filter((column) => UPDATABLE.has(column));
   if (columns.length === 0) return findById(id);
 
   const assignments = columns.map((column) => `${column} = ?`).join(', ');
   const values = columns.map((column) => fields[column]);
 
-  db.prepare(`UPDATE mfa_sessions SET ${assignments}, updated_at = ? WHERE id = ?`).run(...values, now(), id);
-  return findById(id);
+  return db.get(
+    `UPDATE mfa_sessions SET ${assignments}, updated_at = ? WHERE id = ? RETURNING *`,
+    [...values, db.now(), id]
+  );
 }
 
 /**
  * Stores a new OTP. Writing a new hash automatically invalidates the previous
  * OTP (it is overwritten) and resets the attempt counter for the new code.
  */
-function setOtp(id, { otpHash, resendCount }) {
+async function setOtp(id, { otpHash, resendCount }) {
   return update(id, {
     otp_hash: otpHash,
     otp_expires_at: minutesFromNow(config.otpTtlMinutes),
     otp_attempts: 0,
     otp_verified: 0,
-    otp_last_sent_at: now(),
+    otp_last_sent_at: db.now(),
     otp_resend_count: resendCount,
   });
 }
 
-function incrementOtpAttempts(id) {
-  db.prepare('UPDATE mfa_sessions SET otp_attempts = otp_attempts + 1, updated_at = ? WHERE id = ?').run(now(), id);
-  return findById(id);
+async function incrementOtpAttempts(id) {
+  return db.get(
+    'UPDATE mfa_sessions SET otp_attempts = otp_attempts + 1, updated_at = ? WHERE id = ? RETURNING *',
+    [db.now(), id]
+  );
 }
 
 /** Burns the OTP: marks it verified and clears the hash so it cannot be reused. */
-function markOtpVerified(id) {
+async function markOtpVerified(id) {
   return update(id, { otp_verified: 1, otp_hash: null, otp_expires_at: null });
 }
 
-function setEmailToken(id, { tokenHash, resendCount }) {
+async function setEmailToken(id, { tokenHash, resendCount }) {
   return update(id, {
     email_token_hash: tokenHash,
     email_token_expires_at: minutesFromNow(config.emailTokenTtlMinutes),
-    email_last_sent_at: now(),
+    email_last_sent_at: db.now(),
     email_resend_count: resendCount,
     email_verified: 0,
   });
 }
 
 /** Burns the email token and completes the ceremony. */
-function markEmailVerifiedAndComplete(id) {
+async function markEmailVerifiedAndComplete(id) {
   return update(id, {
     email_verified: 1,
     email_token_hash: null,
@@ -106,22 +118,28 @@ function markEmailVerifiedAndComplete(id) {
   });
 }
 
-function lockSession(id, reason) {
+async function lockSession(id, reason) {
   return update(id, { status: reason || 'locked' });
 }
 
 /** Cancels any other pending ceremony for this user (one login attempt at a time). */
-function expireOtherPendingSessions(userId, keepSessionId) {
-  db.prepare(
+async function expireOtherPendingSessions(userId, keepSessionId) {
+  await db.run(
     `UPDATE mfa_sessions
         SET status = 'superseded', otp_hash = NULL, email_token_hash = NULL, updated_at = ?
-      WHERE user_id = ? AND id != ? AND status = 'pending'`
-  ).run(now(), userId, keepSessionId);
+      WHERE user_id = ? AND id <> ? AND status = 'pending'`,
+    [db.now(), userId, keepSessionId]
+  );
 }
 
 /** Housekeeping: drop ceremonies whose overall deadline has passed. */
-function purgeExpired() {
-  const result = db.prepare("DELETE FROM mfa_sessions WHERE expires_at <= ? AND status != 'completed'").run(now());
+async function purgeExpired() {
+  // RETURNING makes the deleted-row count available on Postgres too, where the
+  // HTTP driver reports rows rather than an affected-row count.
+  const result = await db.run(
+    "DELETE FROM mfa_sessions WHERE expires_at <= ? AND status <> 'completed' RETURNING id",
+    [db.now()]
+  );
   return result.changes;
 }
 

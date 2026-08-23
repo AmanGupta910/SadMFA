@@ -19,6 +19,9 @@ const router = express.Router();
 router.use(noCache);
 router.use(loadMfaSession);
 
+/** Wraps an async handler so a rejected promise reaches the error middleware. */
+const wrap = (handler) => (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
+
 /** Friendly banner text for the ?reason= / ?registered= query flags on /login. */
 const LOGIN_NOTICES = {
   expired: { type: 'warning', text: 'Your login session expired. Please sign in again.' },
@@ -94,16 +97,21 @@ router.get('/verify-email', requireMfaStage('otp'), (req, res) => {
 // --------------------------------------------------------------------------
 // The protected destination. Guarded by requireAuth, which only passes when
 // req.session.userId AND req.session.mfaCompleted are set - i.e. after STEP 3.
-router.get('/dashboard', requireAuth, (req, res) => {
-  const session = req.session.mfaSessionId ? mfaSessionRepo.findById(req.session.mfaSessionId) : null;
+router.get(
+  '/dashboard',
+  requireAuth,
+  wrap(async (req, res) => {
+    const session = req.session.mfaSessionId ? await mfaSessionRepo.findById(req.session.mfaSessionId) : null;
+    const recentEvents = await audit.recentForUser(req.user.id, 8);
 
-  res.render('dashboard', {
-    title: 'Dashboard | GoCart Security',
-    user: { id: req.user.id, name: req.user.name, email: req.user.email },
-    completedAt: session ? session.updated_at : null,
-    recentEvents: audit.recentForUser(req.user.id, 8),
-  });
-});
+    res.render('dashboard', {
+      title: 'Dashboard | GoCart Security',
+      user: { id: req.user.id, name: req.user.name, email: req.user.email },
+      completedAt: session ? session.updated_at : null,
+      recentEvents,
+    });
+  })
+);
 
 // A second dummy page, so the "Go to Store Dashboard" button leads somewhere.
 router.get('/store', requireAuth, (req, res) => {

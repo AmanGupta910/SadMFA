@@ -1,60 +1,37 @@
 'use strict';
 
 /**
- * SQLite-backed session store for express-session.
+ * Database-backed session store for express-session.
  *
- * The default MemoryStore is fine on a laptop but unusable once deployed:
+ * The default MemoryStore is unusable once deployed:
  *   - every session is lost when the server restarts, so a redeploy would throw
  *     users out in the middle of the MFA ceremony,
- *   - it grows without bound (it never truly frees expired sessions), and
+ *   - on a serverless platform each request can hit a different instance, so an
+ *     in-memory session would simply not be found, and
  *   - express-session prints a production warning telling you not to use it.
  *
- * This keeps sessions in the same SQLite file as everything else, so the project
- * still needs no extra dependency and no separate session server (Redis).
+ * Sessions are kept in the same database as everything else, so this works
+ * identically on local SQLite and on Neon Postgres.
  */
 
 const { Store } = require('express-session');
+const db = require('./index');
 
-class SqliteSessionStore extends Store {
-  /**
-   * @param {import('node:sqlite').DatabaseSync} db open database handle
-   * @param {{ ttlMs?: number, pruneIntervalMs?: number }} options
-   */
-  constructor(db, options = {}) {
+class DatabaseSessionStore extends Store {
+  /** @param {{ ttlMs?: number, pruneIntervalMs?: number }} options */
+  constructor(options = {}) {
     super();
 
-    this.db = db;
     this.ttlMs = options.ttlMs || 24 * 60 * 60 * 1000;
 
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS user_sessions (
-        sid        TEXT    PRIMARY KEY,
-        data       TEXT    NOT NULL,
-        expires_at INTEGER NOT NULL
-      );
-      CREATE INDEX IF NOT EXISTS idx_user_sessions_expiry ON user_sessions (expires_at);
-    `);
-
-    this.statements = {
-      get: this.db.prepare('SELECT data, expires_at FROM user_sessions WHERE sid = ?'),
-      upsert: this.db.prepare(
-        `INSERT INTO user_sessions (sid, data, expires_at) VALUES (?, ?, ?)
-         ON CONFLICT (sid) DO UPDATE SET data = excluded.data, expires_at = excluded.expires_at`
-      ),
-      touch: this.db.prepare('UPDATE user_sessions SET expires_at = ? WHERE sid = ?'),
-      destroy: this.db.prepare('DELETE FROM user_sessions WHERE sid = ?'),
-      prune: this.db.prepare('DELETE FROM user_sessions WHERE expires_at <= ?'),
-      count: this.db.prepare('SELECT COUNT(*) AS total FROM user_sessions WHERE expires_at > ?'),
-      all: this.db.prepare('SELECT sid, data FROM user_sessions WHERE expires_at > ?'),
-      clear: this.db.prepare('DELETE FROM user_sessions'),
-    };
-
-    this.prune();
-
-    // Housekeeping, so expired rows cannot accumulate forever.
+    // Best-effort background cleanup so expired rows cannot accumulate.
+    // Serverless instances are short-lived, so this simply may not fire there -
+    // `get` also drops any expired row it happens to read.
     const interval = options.pruneIntervalMs || 15 * 60 * 1000;
-    this.pruneTimer = setInterval(() => this.prune(), interval);
-    this.pruneTimer.unref();
+    this.pruneTimer = setInterval(() => {
+      this.prune().catch(() => {});
+    }, interval);
+    if (this.pruneTimer.unref) this.pruneTimer.unref();
   }
 
   /** Absolute expiry for a session, in epoch milliseconds. */
@@ -72,84 +49,66 @@ class SqliteSessionStore extends Store {
   }
 
   get(sid, callback) {
-    try {
-      const row = this.statements.get.get(sid);
-      if (!row) return callback(null, null);
+    db.get('SELECT data, expires_at FROM user_sessions WHERE sid = ?', [sid])
+      .then(async (row) => {
+        if (!row) return callback(null, null);
 
-      // Treat an expired row as absent, and clean it up on the way past.
-      if (row.expires_at <= Date.now()) {
-        this.statements.destroy.run(sid);
-        return callback(null, null);
-      }
+        // Treat an expired row as absent, and clean it up on the way past.
+        if (Number(row.expires_at) <= Date.now()) {
+          await db.run('DELETE FROM user_sessions WHERE sid = ?', [sid]);
+          return callback(null, null);
+        }
 
-      return callback(null, JSON.parse(row.data));
-    } catch (error) {
-      return callback(error);
-    }
+        return callback(null, JSON.parse(row.data));
+      })
+      .catch(callback);
   }
 
   set(sid, session, callback) {
-    try {
-      this.statements.upsert.run(sid, JSON.stringify(session), this.expiryOf(session));
-      return callback(null);
-    } catch (error) {
-      return callback(error);
-    }
+    db.run(
+      `INSERT INTO user_sessions (sid, data, expires_at) VALUES (?, ?, ?)
+       ON CONFLICT (sid) DO UPDATE SET data = excluded.data, expires_at = excluded.expires_at`,
+      [sid, JSON.stringify(session), this.expiryOf(session)]
+    )
+      .then(() => callback(null))
+      .catch(callback);
   }
 
   /** Called on every request when `rolling` is on, to extend the expiry. */
   touch(sid, session, callback) {
-    try {
-      this.statements.touch.run(this.expiryOf(session), sid);
-      return callback(null);
-    } catch (error) {
-      return callback(error);
-    }
+    db.run('UPDATE user_sessions SET expires_at = ? WHERE sid = ?', [this.expiryOf(session), sid])
+      .then(() => callback(null))
+      .catch(callback);
   }
 
   destroy(sid, callback) {
-    try {
-      this.statements.destroy.run(sid);
-      return callback(null);
-    } catch (error) {
-      return callback(error);
-    }
+    db.run('DELETE FROM user_sessions WHERE sid = ?', [sid])
+      .then(() => callback(null))
+      .catch(callback);
   }
 
   length(callback) {
-    try {
-      return callback(null, this.statements.count.get(Date.now()).total);
-    } catch (error) {
-      return callback(error);
-    }
+    db.get('SELECT COUNT(*) AS total FROM user_sessions WHERE expires_at > ?', [Date.now()])
+      .then((row) => callback(null, Number(row ? row.total : 0)))
+      .catch(callback);
   }
 
   all(callback) {
-    try {
-      const rows = this.statements.all.all(Date.now());
-      return callback(null, rows.map((row) => JSON.parse(row.data)));
-    } catch (error) {
-      return callback(error);
-    }
+    db.all('SELECT sid, data FROM user_sessions WHERE expires_at > ?', [Date.now()])
+      .then((rows) => callback(null, rows.map((row) => JSON.parse(row.data))))
+      .catch(callback);
   }
 
   clear(callback) {
-    try {
-      this.statements.clear.run();
-      return callback(null);
-    } catch (error) {
-      return callback(error);
-    }
+    db.run('DELETE FROM user_sessions')
+      .then(() => callback(null))
+      .catch(callback);
   }
 
-  prune() {
-    try {
-      return this.statements.prune.run(Date.now()).changes;
-    } catch (error) {
-      console.error('  Session prune failed:', error.message);
-      return 0;
-    }
+  async prune() {
+    const result = await db.run('DELETE FROM user_sessions WHERE expires_at <= ? RETURNING sid', [Date.now()]);
+    return result.changes;
   }
 }
 
-module.exports = { SqliteSessionStore };
+module.exports = { DatabaseSessionStore };

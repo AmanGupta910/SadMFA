@@ -1,0 +1,10 @@
+# Not needed in the deployed function
+data/
+tests/
+docs/
+scripts/setup-email.js
+scripts/start-offline.js
+render.yaml
+README.md
+.env
+.env.example
